@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Compact Stylish Chess</title>
+    <style>
+        :root {
+            /* Default Classic Theme */
+            --bg: #2f3542;
+            --board-border: #57606f;
+            --white-sq: #f0d9b5;
+            --black-sq: #b58863;
+            --highlight: rgba(46, 204, 113, 0.7);
+            --check: rgba(255, 71, 87, 0.8);
+            --text: white;
+        }
+
+        /* Wood Theme */
+        .theme-wood {
+            --white-sq: #deca9a;
+            --black-sq: #7a4a2a;
+            --board-border: #4d2e1a;
+        }
+
+        /* Dark Theme */
+        .theme-dark {
+            --white-sq: #9aaec4;
+            --black-sq: #4e5d6c;
+            --board-border: #2c3e50;
+        }
+
+        body {
+            margin: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+            height: 100vh; background: var(--bg); font-family: 'Segoe UI', sans-serif; overflow: hidden; color: var(--text);
+        }
+
+        #menu { margin-bottom: 10px; display: flex; gap: 10px; }
+        button.style-btn {
+            padding: 5px 12px; cursor: pointer; border: none; border-radius: 4px; 
+            background: #57606f; color: white; font-weight: bold; transition: 0.2s;
+        }
+        button.style-btn:hover { background: #ffa502; }
+
+        .board-container { position: relative; padding: 6px; background: var(--board-border); border-radius: 4px; }
+
+        .board {
+            display: grid;
+            /* Smaller fixed size for better fit */
+            grid-template-columns: repeat(8, min(10vw, 48px));
+            grid-template-rows: repeat(8, min(10vw, 48px));
+            border: 1px solid #222; position: relative;
+        }
+
+        .square { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; position: relative; cursor: pointer; }
+        .sq-white { background-color: var(--white-sq); }
+        .sq-black { background-color: var(--black-sq); }
+
+        .hint::after {
+            content: ""; width: 25%; height: 25%; background: var(--highlight); border-radius: 50%; position: absolute; z-index: 10;
+        }
+
+        .piece-svg { width: 90%; height: 90%; z-index: 5; pointer-events: none; }
+        .in-check { background-color: var(--check) !important; }
+
+        #hand {
+            position: absolute; width: min(12vw, 55px); height: min(12vw, 55px);
+            pointer-events: none; z-index: 1000; display: none; transition: transform 0.4s ease;
+        }
+
+        #modal {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 2000;
+        }
+
+        .promo-box { display: flex; gap: 10px; background: #fff; padding: 15px; border-radius: 8px; }
+        .promo-item { width: 50px; height: 50px; cursor: pointer; }
+    </style>
+</head>
+<body id="main-body">
+
+<div id="menu">
+    <button class="style-btn" onclick="setTheme('classic')">Classic</button>
+    <button class="style-btn" onclick="setTheme('wood')">Wood</button>
+    <button class="style-btn" onclick="setTheme('dark')">Dark</button>
+</div>
+
+<div style="text-align:center; margin-bottom: 8px;">
+    <span id="turn-display" style="font-weight:bold; font-size: 1.1rem;">White's Turn</span>
+    <div id="alert" style="color: #ff4757; visibility: hidden; font-size: 0.9rem;">CHECK!</div>
+</div>
+
+<div class="board-container">
+    <div id="board" class="board"></div>
+    <div id="hand">
+        <svg viewBox="0 0 512 512"><path fill="#f3c1ad" d="M410.5 182.2c-1.8-15.6-15.1-27.2-30.7-25.3-11.4 1.4-20.7 9.5-24.1 19.8-5.3-7.5-14-12.4-23.9-12.4-8.7 0-16.5 3.8-21.8 9.9-4.8-10.7-15.6-18.1-28.2-18.1-13.3 0-24.5 8.3-28.9 20.1-4.1-3.6-9.5-5.8-15.4-5.8-13 0-23.5 10.5-23.5 23.5v94.7l-26.6-32.9c-10.1-12.5-28.4-14.4-40.9-4.3-12.5 10.1-14.4 28.4-4.3 40.9l93.1 115.4c17.6 21.8 44.1 34.4 72.1 34.4h85.3c35.3 0 64-28.7 64-64v-161.4c0-15.2-11.3-27.9-26.3-29.5z"/></svg>
+    </div>
+</div>
+
+<div id="modal">
+    <h3 id="modal-msg" style="color:white">Promotion</h3>
+    <div id="promo-options" class="promo-box"></div>
+    <button onclick="location.reload()" id="restart" style="display:none; margin-top:20px;">Restart</button>
+</div>
+
+<script>
+const SVGS = {
+    P: '<svg viewBox="0 0 45 45"><path d="M22.5 9c-2.21 0-4 1.79-4 4 0 .89.29 1.71.78 2.38C17.33 16.5 16 18.59 16 21c0 2.03.94 3.84 2.41 5.03-3 1.06-7.41 5.55-7.41 13.47h23c0-7.92-4.41-12.41-7.41-13.47 1.47-1.19 2.41-3 2.41-5.03 0-2.41-1.33-4.5-3.28-5.62.49-.67.78-1.49.78-2.38 0-2.21-1.79-4-4-4z" fill="{C}" stroke="#000"/></svg>',
+    R: '<svg viewBox="0 0 45 45"><path d="M9 39h27v-3H9v3zM12 36h21v-4H12v4zM11 14V9h4v2h5V9h5v2h5V9h4v5M34 14l-3 3H14l-3-3M31 17v12.5l-15.5 0V17M31 29.5l1.5 2.5h-20l1.5-2.5" fill="{C}" stroke="#000"/></svg>',
+    N: '<svg viewBox="0 0 45 45"><path d="M22 10c10.5 1 16.5 8 16 29H15c0-9 10-6.5 8-21M24 18c.3 1.2 2 2.5 2 2.5S22 22 21 21s-3-2-3-2l6-1z" fill="{C}" stroke="#000"/></svg>',
+    B: '<svg viewBox="0 0 45 45"><path d="M9 36c3.39-.47 11.5-1 13.5-1s10.11.53 13.5 1c0 0 1-2.5 1-4.5s-1.41-4-4-4c-3.35 0-10.5 0-10.5 0s-7.15 0-10.5 0c-2.59 0-4 2-4 4s1 4.5 1 4.5zM15 32c2.5 2.5 12.5 2.5 15 0 .5-1.5 0-2 0-2 0-2.5-2.5-4-2.5-4 5.5-1.5 6-11.5-5-15.5-11 4-10.5 14-5 15.5 0 0-2.5 1.5-2.5 4 0 0-.5.5 0 2z" fill="{C}" stroke="#000"/></svg>',
+    Q: '<svg viewBox="0 0 45 45"><path d="M8 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM24.5 7.5a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM41 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM11 20c3 0 3 6 3 6l9-13 9 13s0-6 3-6c4 0 5 15-11 15-16 0-15-15-11-15zM9 37h27v-3H9v3z" fill="{C}" stroke="#000"/></svg>',
+    K: '<svg viewBox="0 0 45 45"><path d="M22.5 11.63V6M20 8h5M22.5 25s4.5-7.5 4.5-11c0-2.48-2.02-4.5-4.5-4.5s-4.5 2.02-4.5 4.5c0 3.5 4.5 11 4.5 11zM11.5 37c5.5 3.5 15.5 3.5 21 0v-7s9-4.5 6-10.5c-4-1-1-.5-6 1h-1s-5-6-9-6-9 6-9 6h-1c-5-1.5-2-2-6-1-3 6 6 10.5 6 10.5v7z" fill="{C}" stroke="#000"/></svg>'
+};
+
+function setTheme(t) {
+    const body = document.getElementById('main-body');
+    body.className = t === 'classic' ? '' : 'theme-' + t;
+}
+
+class Chess {
+    constructor() {
+        this.board = Array(8).fill(null).map(() => Array(8).fill(null));
+        this.turn = 'w'; this.selected = null; this.ep = null;
+        this.castle = {w:{k:1,q:1},b:{k:1,q:1}};
+        this.init(); this.draw();
+    }
+    init() {
+        const L = ['R','N','B','Q','K','B','N','R'];
+        for(let i=0; i<8; i++){ this.board[0][i]='b'+L[i]; this.board[1][i]='bP'; this.board[7][i]='w'+L[i]; this.board[6][i]='wP'; }
+    }
+    draw() {
+        const b = document.getElementById('board'); b.innerHTML = '';
+        const king = this.findK(this.turn);
+        const isC = this.isAtk(king[0], king[1], this.turn);
+        document.getElementById('alert').style.visibility = isC ? 'visible' : 'hidden';
+        for(let r=0; r<8; r++) for(let c=0; c<8; c++) {
+            const s = document.createElement('div');
+            s.className = `square ${(r+c)%2===0?'sq-white':'sq-black'}`;
+            if(isC && this.board[r][c]===this.turn+'K') s.classList.add('in-check');
+            if(this.board[r][c]) {
+                s.innerHTML = SVGS[this.board[r][c][1]].replace('{C}', this.board[r][c][0]==='w'?'#fff':'#333');
+                s.children[0].classList.add('piece-svg');
+            }
+            s.onclick = () => this.click(r,c);
+            b.appendChild(s);
+        }
+    }
+    click(r, c) {
+        if(this.selected) {
+            const moves = this.getL(this.selected.r, this.selected.c);
+            if(moves.some(m => m[0]===r && m[1]===c)) {
+                this.anim(this.selected.r, this.selected.c, r, c, () => {
+                    this.move(this.selected.r, this.selected.c, r, c);
+                    if(this.board[r][c][1]==='P' && (r===0||r===7)) this.promo(r,c);
+                    else this.next();
+                }); return;
+            }
+        }
+        if(this.board[r][c] && this.board[r][c][0]===this.turn) {
+            this.selected = {r,c}; this.draw();
+            this.getL(r,c).forEach(m => document.getElementById('board').children[m[0]*8+m[1]].classList.add('hint'));
+        } else { this.selected = null; this.draw(); }
+    }
+    anim(r1,c1,r2,c2,cb) {
+        const h = document.getElementById('hand'); const b = document.getElementById('board').getBoundingClientRect();
+        const s1 = {x: c1*(b.width/8), y: r1*(b.height/8)}; const s2 = {x: c2*(b.width/8), y: r2*(b.height/8)};
+        h.style.display='block'; h.style.transform=`translate(${s1.x}px, ${s1.y}px)`;
+        setTimeout(()=>{ h.style.transform=`translate(${s2.x}px, ${s2.y}px)`; setTimeout(()=>{ h.style.display='none'; cb(); }, 400); }, 50);
+    }
+    move(r1,c1,r2,c2) {
+        const p = this.board[r1][c1];
+        if(p[1]==='K' && Math.abs(c2-c1)===2) {
+            const rkC = c2>c1?7:0, nRC = c2>c1?c2-1:c2+1;
+            this.board[r1][nRC]=this.board[r1][rkC]; this.board[r1][rkC]=null;
+        }
+        if(p[1]==='P' && this.ep && r2===this.ep[0] && c2===this.ep[1]) this.board[r1][c2]=null;
+        this.ep = (p[1]==='P' && Math.abs(r2-r1)===2) ? [(r1+r2)/2, c1] : null;
+        this.board[r2][c2]=p; this.board[r1][c1]=null;
+        if(p[1]==='K') this.castle[p[0]]={k:0,q:0};
+    }
+    getL(r,c) {
+        const p = this.board[r][c], m = [];
+        const f = (dr,dc,s) => {
+            let nr=r+dr, nc=c+dc;
+            while(nr>=0&&nr<8&&nc>=0&&nc<8) {
+                if(!this.board[nr][nc]){ m.push([nr,nc]); if(!s) break; }
+                else { if(this.board[nr][nc][0]!==p[0]) m.push([nr,nc]); break; }
+                nr+=dr; nc+=dc;
+            }
+        };
+        const t = p[1];
+        if(t==='P') {
+            const d=p[0]==='w'?-1:1;
+            if(!this.board[r+d][c]) { m.push([r+d,c]); if((r===1||r===6)&&!this.board[r+2*d][c]) m.push([r+2*d,c]); }
+            [1,-1].forEach(x => {
+                if(c+x>=0&&c+x<8){
+                    if(this.board[r+d][c+x]&&this.board[r+d][c+x][0]!==p[0]) m.push([r+d,c+x]);
+                    if(this.ep && r+d===this.ep[0] && c+x===this.ep[1]) m.push([r+d,c+x]);
+                }
+            });
+        } else if(t==='N') [[2,1],[2,-1],[-2,1],[-2,-1],[1,2],[1,-2],[-1,2],[-1,-2]].forEach(x => f(x[0],x[1],0));
+        else if(t==='R') [[1,0],[-1,0],[0,1],[0,-1]].forEach(x => f(x[0],x[1],1));
+        else if(t==='B') [[1,1],[-1,-1],[1,-1],[-1,1]].forEach(x => f(x[0],x[1],1));
+        else if(t==='Q') [[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,-1],[1,-1],[-1,1]].forEach(x => f(x[0],x[1],1));
+        else if(t==='K') {
+            [[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,-1],[1,-1],[-1,1]].forEach(x => f(x[0],x[1],0));
+            if(this.castle[p[0]].k && !this.board[r][c+1] && !this.board[r][c+2]) m.push([r,c+2]);
+            if(this.castle[p[0]].q && !this.board[r][c-1] && !this.board[r][c-2] && !this.board[r][c-3]) m.push([r,c-2]);
+        }
+        return m.filter(x => {
+            const old=this.board[x[0]][x[1]]; this.board[x[0]][x[1]]=p; this.board[r][c]=null;
+            const k=this.findK(p[0]), s=!this.isAtk(k[0],k[1],p[0]);
+            this.board[r][c]=p; this.board[x[0]][x[1]]=old; return s;
+        });
+    }
+    isAtk(r,c,def) {
+        const atk=def==='w'?'b':'w';
+        for(let i=0; i<8; i++) for(let j=0; j<8; j++) {
+            const p=this.board[i][j]; if(p&&p[0]===atk) {
+                const dr=Math.abs(r-i), dc=Math.abs(c-j);
+                if(p[1]==='P'){ if(dr===1&&dc===1&&(atk==='w'?i>r:i<r)) return true; }
+                else if(p[1]==='N'){ if((dr===2&&dc===1)||(dr===1&&dc===2)) return true; }
+                else if(this.getP(i,j).some(m=>m[0]===r&&m[1]===c)) return true;
+            }
+        } return false;
+    }
+    getP(r,c) {
+        const p=this.board[r][c], m=[];
+        const f=(dr,dc,s) => {
+            let nr=r+dr, nc=c+dc; while(nr>=0&&nr<8&&nc>=0&&nc<8) {
+                if(!this.board[nr][nc]){ m.push([nr,nc]); if(!s) break; }
+                else { if(this.board[nr][nc][0]!==p[0]) m.push([nr,nc]); break; }
+                nr+=dr; nc+=dc;
+            }
+        };
+        const t=p[1];
+        if(t==='R') [[1,0],[-1,0],[0,1],[0,-1]].forEach(x=>f(x[0],x[1],1));
+        else if(t==='B') [[1,1],[-1,-1],[1,-1],[-1,1]].forEach(x=>f(x[0],x[1],1));
+        else if(t==='Q') [[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,-1],[1,-1],[-1,1]].forEach(x=>f(x[0],x[1],1));
+        else if(t==='K') [[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,-1],[1,-1],[-1,1]].forEach(x=>f(x[0],x[1],0));
+        return m;
+    }
+    findK(c) { for(let r=0; r<8; r++) for(let l=0; l<8; l++) if(this.board[r][l]===c+'K') return [r,l]; }
+    promo(r,c) {
+        const mod=document.getElementById('modal'); mod.style.display='flex';
+        const box=document.getElementById('promo-options'); box.innerHTML='';
+        ['Q','R','B','N'].forEach(t => {
+            const d=document.createElement('div'); d.className='promo-item';
+            d.innerHTML=SVGS[t].replace('{C}', this.turn==='w'?'#fff':'#333');
+            d.onclick=()=>{ this.board[r][c]=this.turn+t; mod.style.display='none'; this.next(); };
+            box.appendChild(d);
+        });
+    }
+    next() {
+        this.turn=this.turn==='w'?'b':'w'; this.selected=null;
+        document.getElementById('turn-display').innerText=(this.turn==='w'?'White':'Black')+"'s Turn";
+        this.draw();
+        let any=0; for(let r=0; r<8; r++) for(let c=0; c<8; c++) if(this.board[r][c]&&this.board[r][c][0]===this.turn) any+=this.getL(r,c).length;
+        if(!any) {
+            const k=this.findK(this.turn); const mate=this.isAtk(k[0],k[1],this.turn);
+            document.getElementById('modal').style.display='flex';
+            document.getElementById('modal-msg').innerText=mate?"CHECKMATE!":"STALEMATE";
+            document.getElementById('promo-options').innerHTML=''; document.getElementById('restart').style.display='block';
+        }
+    }
+}
+window.onload = () => new Chess();
+</script>
+</body>
+</html>
